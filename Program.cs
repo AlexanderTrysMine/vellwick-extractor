@@ -19,8 +19,8 @@ using Microsoft.Win32;
 [assembly: AssemblyProduct("Vellwick Extractor")]
 [assembly: AssemblyCompany("Vellwick")]
 [assembly: AssemblyCopyright("Copyright Vellwick")]
-[assembly: AssemblyVersion("1.0.5.0")]
-[assembly: AssemblyFileVersion("1.0.5.0")]
+[assembly: AssemblyVersion("1.0.6.0")]
+[assembly: AssemblyFileVersion("1.0.6.0")]
 
 namespace VellwickExtractor
 {
@@ -198,10 +198,11 @@ namespace VellwickExtractor
             folderPanel.Controls.Add(folderTextBox, 0, 1);
             folderPanel.Controls.Add(browseButton, 1, 1);
 
-            keepZipCheckBox = new CheckBox();
+            keepZipCheckBox = new DarkCheckBox();
             keepZipCheckBox.Text = "Keep zip files after extraction";
             keepZipCheckBox.Checked = true;
-            keepZipCheckBox.AutoSize = true;
+            keepZipCheckBox.AutoSize = false;
+            keepZipCheckBox.Size = new Size(250, 30);
             keepZipCheckBox.Margin = new Padding(0, 8, 16, 8);
             keepZipCheckBox.ForeColor = Theme.Text;
 
@@ -1623,6 +1624,59 @@ namespace VellwickExtractor
         {
             e.Graphics.Clear(Theme.Header);
             LogoPainter.Paint(e.Graphics, Rectangle.Inflate(ClientRectangle, -1, -1), false);
+        }
+    }
+
+    internal sealed class DarkCheckBox : CheckBox
+    {
+        public DarkCheckBox()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            BackColor = Theme.Window;
+            ForeColor = Theme.Text;
+            Cursor = Cursors.Hand;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(BackColor);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var boxSize = Math.Min(18, Math.Max(14, Height - 8));
+            var boxTop = (Height - boxSize) / 2;
+            var box = new Rectangle(1, boxTop, boxSize, boxSize);
+
+            using (var boxBrush = new SolidBrush(Enabled ? Theme.Surface : Theme.SurfaceRaised))
+            using (var borderPen = new Pen(Checked ? Theme.Accent : Theme.Border))
+            {
+                e.Graphics.FillRectangle(boxBrush, box);
+                e.Graphics.DrawRectangle(borderPen, box);
+            }
+
+            if (Checked)
+            {
+                using (var checkPen = new Pen(Color.White, 2F))
+                {
+                    checkPen.StartCap = LineCap.Round;
+                    checkPen.EndCap = LineCap.Round;
+                    var left = box.Left + 4;
+                    var mid = box.Left + box.Width / 2 - 1;
+                    var right = box.Right - 4;
+                    var lower = box.Top + box.Height - 5;
+                    var center = box.Top + box.Height / 2 + 2;
+                    var upper = box.Top + 5;
+                    e.Graphics.DrawLines(checkPen, new[] { new Point(left, center), new Point(mid, lower), new Point(right, upper) });
+                }
+            }
+
+            var textRect = new Rectangle(box.Right + 8, 0, Math.Max(0, Width - box.Right - 8), Height);
+            TextRenderer.DrawText(
+                e.Graphics,
+                Text,
+                Font,
+                textRect,
+                Enabled ? Theme.Text : Theme.MutedText,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
     }
 
