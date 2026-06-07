@@ -1,37 +1,81 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Vellwick Extractor")]
 [assembly: AssemblyDescription("Simple Windows zip extraction utility")]
 [assembly: AssemblyProduct("Vellwick Extractor")]
 [assembly: AssemblyCompany("Vellwick")]
 [assembly: AssemblyCopyright("Copyright Vellwick")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 namespace VellwickExtractor
 {
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            if (TryHandleCommandLine(args))
+            {
+                return;
+            }
+
             Application.Run(new ExtractorForm());
+        }
+
+        private static bool TryHandleCommandLine(string[] args)
+        {
+            if (args == null || args.Length == 0)
+            {
+                return false;
+            }
+
+            var zipPath = args.Length >= 2 && string.Equals(args[0], "--extract", StringComparison.OrdinalIgnoreCase)
+                ? args[1]
+                : args[0];
+
+            zipPath = PathInput.Normalize(zipPath);
+            if (!File.Exists(zipPath) || !string.Equals(Path.GetExtension(zipPath), ".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Choose a valid .zip file.", "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return true;
+            }
+
+            try
+            {
+                var outputFolder = ExtractorForm.ExtractZip(zipPath);
+                MessageBox.Show("Extracted with Vellwick:" + Environment.NewLine + outputFolder, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Could not extract this zip file." + Environment.NewLine + Environment.NewLine + ex.Message, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
+            return true;
         }
     }
 
     internal sealed class ExtractorForm : Form
     {
+        private const string GitHubUrl = "https://github.com/AlexanderTrysMine/vellwick-extractor";
+
         private readonly TextBox folderTextBox;
         private readonly Button browseButton;
+        private readonly Button contextMenuButton;
         private readonly Button executeButton;
         private readonly CheckBox keepZipCheckBox;
         private readonly ProgressBar progressBar;
@@ -55,6 +99,7 @@ namespace VellwickExtractor
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
             BackColor = Color.FromArgb(245, 247, 250);
             AutoScaleMode = AutoScaleMode.Dpi;
+            Icon = LogoPainter.CreateIcon(32);
 
             var page = new TableLayoutPanel();
             page.Dock = DockStyle.Fill;
@@ -84,8 +129,15 @@ namespace VellwickExtractor
             folderTextBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             folderTextBox.BorderStyle = BorderStyle.FixedSingle;
             folderTextBox.Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
-            folderTextBox.ReadOnly = true;
+            folderTextBox.AllowDrop = true;
+            folderTextBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            folderTextBox.AutoCompleteSource = AutoCompleteSource.FileSystemDirectories;
+            folderTextBox.ContextMenuStrip = BuildFolderContextMenu();
             folderTextBox.Margin = new Padding(0, 4, 8, 4);
+            folderTextBox.TextChanged += FolderTextBox_TextChanged;
+            folderTextBox.DragEnter += FolderTextBox_DragEnter;
+            folderTextBox.DragDrop += FolderTextBox_DragDrop;
+            folderTextBox.Leave += FolderTextBox_Leave;
 
             browseButton = CreateButton("Browse...");
             browseButton.Margin = new Padding(0, 4, 0, 4);
@@ -101,12 +153,17 @@ namespace VellwickExtractor
             keepZipCheckBox.Margin = new Padding(0, 8, 16, 8);
             keepZipCheckBox.ForeColor = Color.FromArgb(37, 49, 65);
 
+            contextMenuButton = CreateButton("Right-click setup");
+            contextMenuButton.Margin = new Padding(0, 4, 8, 4);
+            contextMenuButton.Click += ContextMenuButton_Click;
+
             executeButton = CreatePrimaryButton("Execute");
             executeButton.Margin = new Padding(0, 4, 0, 4);
             executeButton.Click += ExecuteButton_Click;
 
             controlsPanel.Controls.Add(keepZipCheckBox, 0, 0);
-            controlsPanel.Controls.Add(executeButton, 1, 0);
+            controlsPanel.Controls.Add(contextMenuButton, 1, 0);
+            controlsPanel.Controls.Add(executeButton, 2, 0);
 
             progressBar = new ProgressBar();
             progressBar.Dock = DockStyle.Fill;
@@ -156,7 +213,7 @@ namespace VellwickExtractor
         {
             var header = new Panel();
             header.Dock = DockStyle.Top;
-            header.Height = 86;
+            header.Height = 92;
             header.Margin = new Padding(0, 0, 0, 16);
             header.BackColor = Color.FromArgb(31, 41, 55);
 
@@ -166,25 +223,68 @@ namespace VellwickExtractor
             accent.BackColor = Color.FromArgb(37, 99, 235);
             header.Controls.Add(accent);
 
+            var layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.ColumnCount = 3;
+            layout.RowCount = 2;
+            layout.Padding = new Padding(18, 12, 18, 10);
+            layout.BackColor = Color.Transparent;
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 58F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 42F));
+            header.Controls.Add(layout);
+
+            var logo = new VellwickLogoControl();
+            logo.Width = 52;
+            logo.Height = 52;
+            logo.Margin = new Padding(0, 2, 16, 0);
+            layout.Controls.Add(logo, 0, 0);
+            layout.SetRowSpan(logo, 2);
+
             var title = new Label();
             title.Text = "Vellwick Extractor";
             title.Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold, GraphicsUnit.Point);
             title.ForeColor = Color.White;
             title.AutoSize = false;
-            title.Dock = DockStyle.Top;
-            title.Height = 42;
-            title.Padding = new Padding(22, 14, 22, 0);
-            header.Controls.Add(title);
+            title.Dock = DockStyle.Fill;
+            title.TextAlign = ContentAlignment.BottomLeft;
+            title.Margin = new Padding(0);
+            layout.Controls.Add(title, 1, 0);
+
+            var gitHubLink = new LinkLabel();
+            gitHubLink.Text = "GitHub";
+            gitHubLink.AutoSize = true;
+            gitHubLink.Dock = DockStyle.Fill;
+            gitHubLink.TextAlign = ContentAlignment.BottomRight;
+            gitHubLink.LinkColor = Color.FromArgb(191, 219, 254);
+            gitHubLink.ActiveLinkColor = Color.White;
+            gitHubLink.VisitedLinkColor = Color.FromArgb(191, 219, 254);
+            gitHubLink.LinkBehavior = LinkBehavior.HoverUnderline;
+            gitHubLink.Margin = new Padding(20, 0, 0, 4);
+            gitHubLink.LinkClicked += GitHubLink_LinkClicked;
+            layout.Controls.Add(gitHubLink, 2, 0);
 
             var subtitle = new Label();
-            subtitle.Text = "Select a folder, choose whether to keep the original zip files, then execute.";
+            subtitle.Text = "Paste or browse to a folder, choose whether to keep the original zip files, then execute.";
             subtitle.Font = new Font("Segoe UI", 9.75F, FontStyle.Regular, GraphicsUnit.Point);
             subtitle.ForeColor = Color.FromArgb(203, 213, 225);
             subtitle.AutoEllipsis = true;
             subtitle.AutoSize = false;
             subtitle.Dock = DockStyle.Fill;
-            subtitle.Padding = new Padding(22, 0, 22, 8);
-            header.Controls.Add(subtitle);
+            subtitle.TextAlign = ContentAlignment.TopLeft;
+            subtitle.Margin = new Padding(0);
+            layout.Controls.Add(subtitle, 1, 1);
+
+            var gitHubAccount = new Label();
+            gitHubAccount.Text = "AlexanderTrysMine";
+            gitHubAccount.AutoSize = false;
+            gitHubAccount.Dock = DockStyle.Fill;
+            gitHubAccount.TextAlign = ContentAlignment.TopRight;
+            gitHubAccount.ForeColor = Color.FromArgb(203, 213, 225);
+            gitHubAccount.Margin = new Padding(20, 0, 0, 0);
+            layout.Controls.Add(gitHubAccount, 2, 1);
 
             return header;
         }
@@ -217,10 +317,11 @@ namespace VellwickExtractor
         {
             var panel = new TableLayoutPanel();
             panel.Dock = DockStyle.Top;
-            panel.ColumnCount = 2;
+            panel.ColumnCount = 3;
             panel.RowCount = 1;
             panel.Margin = new Padding(0, 0, 0, 14);
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             return panel;
@@ -308,15 +409,132 @@ namespace VellwickExtractor
             return button;
         }
 
+        private ContextMenuStrip BuildFolderContextMenu()
+        {
+            var menu = new ContextMenuStrip();
+            var paste = new ToolStripMenuItem("Paste", null, FolderPaste_Click);
+            var clear = new ToolStripMenuItem("Clear", null, FolderClear_Click);
+            menu.Items.Add(paste);
+            menu.Items.Add(clear);
+            menu.Opening += delegate
+            {
+                paste.Enabled = Clipboard.ContainsText();
+                clear.Enabled = folderTextBox != null && folderTextBox.TextLength > 0;
+            };
+            return menu;
+        }
+
+        private void FolderPaste_Click(object sender, EventArgs e)
+        {
+            if (Clipboard.ContainsText())
+            {
+                folderTextBox.Text = PathInput.Normalize(Clipboard.GetText());
+                folderTextBox.SelectionStart = folderTextBox.TextLength;
+            }
+        }
+
+        private void FolderClear_Click(object sender, EventArgs e)
+        {
+            folderTextBox.Clear();
+        }
+
+        private void FolderTextBox_TextChanged(object sender, EventArgs e)
+        {
+            if (isRunning)
+            {
+                return;
+            }
+
+            var folder = PathInput.Normalize(folderTextBox.Text);
+            if (folder.Length == 0)
+            {
+                statusLabel.Text = "Ready.";
+            }
+            else if (Directory.Exists(folder))
+            {
+                statusLabel.Text = "Ready to extract from this folder.";
+            }
+            else
+            {
+                statusLabel.Text = "Folder path has not been found yet.";
+            }
+        }
+
+        private void FolderTextBox_Leave(object sender, EventArgs e)
+        {
+            var normalized = PathInput.Normalize(folderTextBox.Text);
+            if (!string.Equals(folderTextBox.Text, normalized, StringComparison.Ordinal))
+            {
+                folderTextBox.Text = normalized;
+            }
+        }
+
+        private void FolderTextBox_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effect = GetDroppedFolder(e) == null ? DragDropEffects.None : DragDropEffects.Copy;
+        }
+
+        private void FolderTextBox_DragDrop(object sender, DragEventArgs e)
+        {
+            var folder = GetDroppedFolder(e);
+            if (folder != null)
+            {
+                folderTextBox.Text = folder;
+                folderTextBox.SelectionStart = folderTextBox.TextLength;
+            }
+        }
+
+        private static string GetDroppedFolder(DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                return null;
+            }
+
+            var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (paths == null || paths.Length == 0)
+            {
+                return null;
+            }
+
+            var folder = PathInput.Normalize(paths[0]);
+            return Directory.Exists(folder) ? folder : null;
+        }
+
+        private void GitHubLink_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(GitHubUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not open the GitHub link." + Environment.NewLine + GitHubUrl + Environment.NewLine + Environment.NewLine + ex.Message, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void ContextMenuButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                ExplorerContextMenu.Register(Application.ExecutablePath);
+                MessageBox.Show(this, "Windows right-click support is ready." + Environment.NewLine + Environment.NewLine + "Use: Right-click a .zip file, then choose \"Extract with Vellwick\".", "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not register the Windows right-click action." + Environment.NewLine + Environment.NewLine + ex.Message, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void BrowseButton_Click(object sender, EventArgs e)
         {
             using (var dialog = new FolderBrowserDialog())
             {
                 dialog.Description = "Choose the folder that contains zip files.";
                 dialog.ShowNewFolderButton = false;
-                if (Directory.Exists(folderTextBox.Text))
+                if (Directory.Exists(PathInput.Normalize(folderTextBox.Text)))
                 {
-                    dialog.SelectedPath = folderTextBox.Text;
+                    dialog.SelectedPath = PathInput.Normalize(folderTextBox.Text);
                 }
 
                 if (dialog.ShowDialog(this) == DialogResult.OK)
@@ -334,7 +552,8 @@ namespace VellwickExtractor
                 return;
             }
 
-            var folder = folderTextBox.Text.Trim();
+            var folder = PathInput.Normalize(folderTextBox.Text);
+            folderTextBox.Text = folder;
             if (!Directory.Exists(folder))
             {
                 MessageBox.Show(this, "Choose a valid folder first.", "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -343,6 +562,7 @@ namespace VellwickExtractor
 
             isRunning = true;
             browseButton.Enabled = false;
+            contextMenuButton.Enabled = false;
             executeButton.Enabled = false;
             keepZipCheckBox.Enabled = false;
             executeButton.Text = "Working...";
@@ -455,6 +675,7 @@ namespace VellwickExtractor
         {
             isRunning = false;
             browseButton.Enabled = true;
+            contextMenuButton.Enabled = true;
             executeButton.Enabled = true;
             keepZipCheckBox.Enabled = true;
             executeButton.Text = "Execute";
@@ -521,7 +742,7 @@ namespace VellwickExtractor
             }
         }
 
-        private static string ExtractZip(string zipPath)
+        internal static string ExtractZip(string zipPath)
         {
             var zipDirectory = Path.GetDirectoryName(zipPath);
             if (string.IsNullOrEmpty(zipDirectory))
@@ -702,6 +923,171 @@ namespace VellwickExtractor
                     Deleted = stats.Deleted
                 }
             };
+        }
+    }
+
+    internal static class PathInput
+    {
+        public static string Normalize(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            var cleaned = text.Trim();
+            while (cleaned.Length >= 2 && cleaned.StartsWith("\"", StringComparison.Ordinal) && cleaned.EndsWith("\"", StringComparison.Ordinal))
+            {
+                cleaned = cleaned.Substring(1, cleaned.Length - 2).Trim();
+            }
+
+            return Environment.ExpandEnvironmentVariables(cleaned);
+        }
+    }
+
+    internal static class ExplorerContextMenu
+    {
+        private const string VerbName = "VellwickExtract";
+        private const string MenuText = "Extract with Vellwick";
+
+        [DllImport("shell32.dll")]
+        private static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
+
+        public static void Register(string executablePath)
+        {
+            if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
+            {
+                throw new FileNotFoundException("The Vellwick Extractor executable was not found.", executablePath);
+            }
+
+            var command = "\"" + executablePath + "\" --extract \"%1\"";
+            RegisterShellVerb(@"Software\Classes\SystemFileAssociations\.zip\shell\" + VerbName, executablePath, command);
+            RegisterShellVerb(@"Software\Classes\CompressedFolder\shell\" + VerbName, executablePath, command);
+            SHChangeNotify(0x08000000, 0x0000, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        private static void RegisterShellVerb(string shellKeyPath, string executablePath, string command)
+        {
+            using (var shellKey = Registry.CurrentUser.CreateSubKey(shellKeyPath))
+            {
+                if (shellKey == null)
+                {
+                    throw new InvalidOperationException("Could not create the registry key for " + shellKeyPath);
+                }
+
+                shellKey.SetValue("", MenuText);
+                shellKey.SetValue("MUIVerb", MenuText);
+                shellKey.SetValue("Icon", "\"" + executablePath + "\",0");
+
+                using (var commandKey = shellKey.CreateSubKey("command"))
+                {
+                    if (commandKey == null)
+                    {
+                        throw new InvalidOperationException("Could not create the command registry key for " + shellKeyPath);
+                    }
+
+                    commandKey.SetValue("", command);
+                }
+            }
+        }
+    }
+
+    internal sealed class VellwickLogoControl : Control
+    {
+        public VellwickLogoControl()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            MinimumSize = new Size(42, 42);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            LogoPainter.Paint(e.Graphics, ClientRectangle, true);
+        }
+    }
+
+    internal static class LogoPainter
+    {
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern bool DestroyIcon(IntPtr handle);
+
+        public static Icon CreateIcon(int size)
+        {
+            using (var bitmap = new Bitmap(size, size))
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.Clear(Color.Transparent);
+                Paint(graphics, new Rectangle(0, 0, size, size), false);
+                var handle = bitmap.GetHicon();
+                try
+                {
+                    return (Icon)Icon.FromHandle(handle).Clone();
+                }
+                finally
+                {
+                    DestroyIcon(handle);
+                }
+            }
+        }
+
+        public static void Paint(Graphics graphics, Rectangle bounds, bool includeWordmark)
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            var size = Math.Min(bounds.Width, bounds.Height);
+            if (size <= 0)
+            {
+                return;
+            }
+
+            var mark = new Rectangle(bounds.Left, bounds.Top, size - 1, size - 1);
+            using (var backgroundPath = RoundedRectangle(mark, Math.Max(6, size / 6)))
+            using (var background = new LinearGradientBrush(mark, Color.FromArgb(37, 99, 235), Color.FromArgb(14, 165, 233), LinearGradientMode.ForwardDiagonal))
+            using (var border = new Pen(Color.FromArgb(125, 255, 255, 255), Math.Max(1, size / 18)))
+            {
+                graphics.FillPath(background, backgroundPath);
+                graphics.DrawPath(border, backgroundPath);
+            }
+
+            using (var pen = new Pen(Color.White, Math.Max(4, size / 8)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                var left = new PointF(mark.Left + size * 0.24F, mark.Top + size * 0.28F);
+                var bottom = new PointF(mark.Left + size * 0.48F, mark.Top + size * 0.73F);
+                var right = new PointF(mark.Left + size * 0.78F, mark.Top + size * 0.28F);
+                graphics.DrawLines(pen, new[] { left, bottom, right });
+            }
+
+            using (var accent = new SolidBrush(Color.FromArgb(225, 255, 255, 255)))
+            {
+                graphics.FillEllipse(accent, mark.Left + size * 0.67F, mark.Top + size * 0.64F, Math.Max(4, size * 0.12F), Math.Max(4, size * 0.12F));
+            }
+
+            if (includeWordmark && bounds.Width > bounds.Height * 2)
+            {
+                using (var font = new Font("Segoe UI Semibold", Math.Max(9F, size * 0.34F), FontStyle.Bold, GraphicsUnit.Point))
+                using (var brush = new SolidBrush(Color.White))
+                {
+                    var textRect = new Rectangle(mark.Right + 10, bounds.Top, bounds.Width - mark.Width - 10, bounds.Height);
+                    graphics.DrawString("Vellwick", font, brush, textRect, new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center });
+                }
+            }
+        }
+
+        private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
+        {
+            var path = new GraphicsPath();
+            var diameter = radius * 2;
+            path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+            return path;
         }
     }
 }
