@@ -6,8 +6,11 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -16,8 +19,8 @@ using Microsoft.Win32;
 [assembly: AssemblyProduct("Vellwick Extractor")]
 [assembly: AssemblyCompany("Vellwick")]
 [assembly: AssemblyCopyright("Copyright Vellwick")]
-[assembly: AssemblyVersion("1.0.4.0")]
-[assembly: AssemblyFileVersion("1.0.4.0")]
+[assembly: AssemblyVersion("1.0.5.0")]
+[assembly: AssemblyFileVersion("1.0.5.0")]
 
 namespace VellwickExtractor
 {
@@ -117,6 +120,7 @@ namespace VellwickExtractor
     {
         private const string GitHubUrl = "https://github.com/AlexanderTrysMine/vellwick-extractor";
         private const string GitHubAccount = "AlexanderTrysMine";
+        private const string VellwickSiteUrl = "https://vellwick.com";
 
         private readonly TextBox folderTextBox;
         private readonly Button browseButton;
@@ -132,6 +136,8 @@ namespace VellwickExtractor
         private readonly BackgroundWorker worker;
 
         private bool isRunning;
+        private bool updateCheckStarted;
+        private BackgroundWorker updateWorker;
 
         public ExtractorForm()
         {
@@ -256,6 +262,12 @@ namespace VellwickExtractor
             EnableDarkTitleBar();
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            StartUpdateCheck();
+        }
+
         private void EnableDarkTitleBar()
         {
             if (Environment.OSVersion.Version.Major < 10)
@@ -313,6 +325,8 @@ namespace VellwickExtractor
             title.Dock = DockStyle.Fill;
             title.TextAlign = ContentAlignment.MiddleLeft;
             title.Margin = new Padding(0);
+            title.Cursor = Cursors.Hand;
+            title.Click += VellwickTitle_Click;
             layout.Controls.Add(title, 1, 0);
 
             var gitHubLink = new GitHubHeaderLinkControl(GitHubUrl, GitHubAccount);
@@ -322,6 +336,85 @@ namespace VellwickExtractor
             layout.Controls.Add(gitHubLink, 2, 0);
 
             return header;
+        }
+
+        private void VellwickTitle_Click(object sender, EventArgs e)
+        {
+            LinkLauncher.Open(this, VellwickSiteUrl, "Vellwick.com");
+        }
+
+        private void StartUpdateCheck()
+        {
+            if (updateCheckStarted)
+            {
+                return;
+            }
+
+            updateCheckStarted = true;
+            updateWorker = new BackgroundWorker();
+            updateWorker.DoWork += UpdateWorker_DoWork;
+            updateWorker.RunWorkerCompleted += UpdateWorker_RunWorkerCompleted;
+            updateWorker.RunWorkerAsync();
+        }
+
+        private void UpdateWorker_DoWork(object sender, DoWorkEventArgs e)
+        {
+            e.Result = AppUpdater.CheckForUpdate();
+        }
+
+        private void UpdateWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            updateWorker = null;
+            if (Disposing || IsDisposed || e.Cancelled || e.Error != null)
+            {
+                return;
+            }
+
+            var update = e.Result as UpdateInfo;
+            if (update == null || isRunning)
+            {
+                return;
+            }
+
+            var message = "Vellwick Extractor " + update.DisplayVersion + " is available." +
+                Environment.NewLine + Environment.NewLine +
+                "Install it now and restart Vellwick Extractor?";
+
+            if (MessageBox.Show(this, message, "Vellwick Extractor Update", MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            InstallUpdate(update);
+        }
+
+        private void InstallUpdate(UpdateInfo update)
+        {
+            try
+            {
+                UseWaitCursor = true;
+                browseButton.Enabled = false;
+                executeButton.Enabled = false;
+                keepZipCheckBox.Enabled = false;
+                statusLabel.Text = "Downloading update...";
+
+                AppUpdater.InstallAndRestart(update);
+                statusLabel.Text = "Restarting to finish update...";
+                Application.Exit();
+            }
+            catch (Exception ex)
+            {
+                UseWaitCursor = false;
+                if (!isRunning)
+                {
+                    browseButton.Enabled = true;
+                    executeButton.Enabled = true;
+                    keepZipCheckBox.Enabled = true;
+                }
+
+                statusLabel.Text = "Update could not be installed.";
+                MessageBox.Show(this, "Could not install the update." + Environment.NewLine + Environment.NewLine + ex.Message, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private TableLayoutPanel BuildFolderPanel()
@@ -846,7 +939,65 @@ namespace VellwickExtractor
                 }
             }
 
-            return outputFolder;
+            return SurfaceSingleChildFolders(outputFolder);
+        }
+
+        private static string SurfaceSingleChildFolders(string folder)
+        {
+            var current = folder;
+            for (int i = 0; i < 32; i++)
+            {
+                string[] files;
+                string[] directories;
+                try
+                {
+                    files = Directory.GetFiles(current, "*", SearchOption.TopDirectoryOnly);
+                    directories = Directory.GetDirectories(current, "*", SearchOption.TopDirectoryOnly);
+                }
+                catch
+                {
+                    return current;
+                }
+
+                if (files.Length != 0 || directories.Length != 1)
+                {
+                    return current;
+                }
+
+                var parent = Directory.GetParent(current);
+                if (parent == null)
+                {
+                    return current;
+                }
+
+                var child = directories[0];
+                var childName = Path.GetFileName(child);
+                if (string.IsNullOrWhiteSpace(childName))
+                {
+                    return current;
+                }
+
+                var desiredDestination = Path.Combine(parent.FullName, childName);
+                string destination;
+                if (string.Equals(Path.GetFullPath(desiredDestination).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), Path.GetFullPath(current).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                {
+                    var temporary = GetUniqueDirectory(Path.Combine(parent.FullName, childName + " Update"));
+                    Directory.Move(child, temporary);
+                    Directory.Delete(current, false);
+                    Directory.Move(temporary, desiredDestination);
+                    destination = desiredDestination;
+                }
+                else
+                {
+                    destination = GetUniqueDirectory(desiredDestination);
+                    Directory.Move(child, destination);
+                    Directory.Delete(current, false);
+                }
+
+                current = destination;
+            }
+
+            return current;
         }
 
         private static string GetUniqueDirectory(string preferredPath)
@@ -981,6 +1132,225 @@ namespace VellwickExtractor
         }
     }
 
+    internal sealed class UpdateInfo
+    {
+        public Version Version { get; set; }
+        public string DisplayVersion { get; set; }
+        public string DownloadUrl { get; set; }
+        public string ReleaseUrl { get; set; }
+    }
+
+    internal static class AppUpdater
+    {
+        private const string LatestReleaseApiUrl = "https://api.github.com/repos/AlexanderTrysMine/vellwick-extractor/releases/latest";
+        private const string UserAgent = "Vellwick-Extractor";
+
+        public static UpdateInfo CheckForUpdate()
+        {
+            try
+            {
+                EnableModernTls();
+                string json;
+                using (var client = CreateWebClient())
+                {
+                    json = client.DownloadString(LatestReleaseApiUrl);
+                }
+
+                var tagName = MatchJsonString(json, "tag_name");
+                var downloadUrl = MatchFirstExeDownloadUrl(json);
+                if (string.IsNullOrWhiteSpace(tagName) || string.IsNullOrWhiteSpace(downloadUrl))
+                {
+                    return null;
+                }
+
+                var latest = ParseTagVersion(tagName);
+                if (latest == null)
+                {
+                    return null;
+                }
+
+                var current = NormalizeVersion(Assembly.GetExecutingAssembly().GetName().Version);
+                if (NormalizeVersion(latest).CompareTo(current) <= 0)
+                {
+                    return null;
+                }
+
+                return new UpdateInfo
+                {
+                    Version = latest,
+                    DisplayVersion = tagName,
+                    DownloadUrl = downloadUrl,
+                    ReleaseUrl = MatchJsonString(json, "html_url")
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static void InstallAndRestart(UpdateInfo update)
+        {
+            if (update == null || string.IsNullOrWhiteSpace(update.DownloadUrl))
+            {
+                throw new InvalidOperationException("No update download was found.");
+            }
+
+            EnableModernTls();
+            var tempRoot = Path.Combine(Path.GetTempPath(), "VellwickExtractorUpdate");
+            Directory.CreateDirectory(tempRoot);
+
+            var downloadPath = Path.Combine(tempRoot, "Vellwick Extractor " + SafeFileToken(update.DisplayVersion) + ".exe");
+            using (var client = CreateWebClient())
+            {
+                client.DownloadFile(update.DownloadUrl, downloadPath);
+            }
+
+            if (!File.Exists(downloadPath) || new FileInfo(downloadPath).Length == 0)
+            {
+                throw new IOException("The update download did not complete.");
+            }
+
+            var scriptPath = Path.Combine(tempRoot, "finish-update.ps1");
+            File.WriteAllText(scriptPath, BuildUpdaterScript(Process.GetCurrentProcess().Id, downloadPath, Application.ExecutablePath, tempRoot), Encoding.ASCII);
+
+            var startInfo = new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File " + QuoteArgument(scriptPath));
+            startInfo.UseShellExecute = false;
+            startInfo.CreateNoWindow = true;
+            startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            Process.Start(startInfo);
+        }
+
+        private static WebClient CreateWebClient()
+        {
+            var client = new WebClient();
+            client.Headers[HttpRequestHeader.UserAgent] = UserAgent;
+            client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
+            return client;
+        }
+
+        private static void EnableModernTls()
+        {
+            ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | (SecurityProtocolType)3072;
+        }
+
+        private static string MatchJsonString(string json, string propertyName)
+        {
+            var match = Regex.Match(json, "\"" + Regex.Escape(propertyName) + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"", RegexOptions.Singleline);
+            return match.Success ? DecodeJsonString(match.Groups[1].Value) : null;
+        }
+
+        private static string MatchFirstExeDownloadUrl(string json)
+        {
+            var matches = Regex.Matches(json, "\"browser_download_url\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"", RegexOptions.Singleline);
+            foreach (Match match in matches)
+            {
+                var value = DecodeJsonString(match.Groups[1].Value);
+                if (value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static string DecodeJsonString(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            try
+            {
+                return Regex.Unescape(value.Replace("\\/", "/"));
+            }
+            catch
+            {
+                return value.Replace("\\/", "/");
+            }
+        }
+
+        private static Version ParseTagVersion(string tagName)
+        {
+            var match = Regex.Match(tagName, "\\d+(?:\\.\\d+){0,3}");
+            if (!match.Success)
+            {
+                return null;
+            }
+
+            try
+            {
+                return new Version(match.Value);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static Version NormalizeVersion(Version version)
+        {
+            if (version == null)
+            {
+                return new Version(0, 0, 0, 0);
+            }
+
+            return new Version(
+                Math.Max(0, version.Major),
+                Math.Max(0, version.Minor),
+                Math.Max(0, version.Build),
+                Math.Max(0, version.Revision));
+        }
+
+        private static string BuildUpdaterScript(int processId, string sourcePath, string targetPath, string tempRoot)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("$ErrorActionPreference = 'Stop'");
+            builder.AppendLine("$pidToWait = " + processId);
+            builder.AppendLine("$source = '" + EscapePowerShellSingleQuoted(sourcePath) + "'");
+            builder.AppendLine("$target = '" + EscapePowerShellSingleQuoted(targetPath) + "'");
+            builder.AppendLine("$tempRoot = '" + EscapePowerShellSingleQuoted(tempRoot) + "'");
+            builder.AppendLine("try { Wait-Process -Id $pidToWait -Timeout 45 -ErrorAction SilentlyContinue } catch {}");
+            builder.AppendLine("Start-Sleep -Milliseconds 500");
+            builder.AppendLine("Copy-Item -LiteralPath $source -Destination $target -Force");
+            builder.AppendLine("Start-Process -FilePath $target");
+            builder.AppendLine("Start-Sleep -Seconds 2");
+            builder.AppendLine("Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue");
+            builder.AppendLine("Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue");
+            builder.AppendLine("try { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue } catch {}");
+            return builder.ToString();
+        }
+
+        private static string EscapePowerShellSingleQuoted(string value)
+        {
+            return (value ?? string.Empty).Replace("'", "''");
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
+        }
+
+        private static string SafeFileToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "update";
+            }
+
+            var cleaned = value.Trim();
+            var invalid = Path.GetInvalidFileNameChars();
+            for (int i = 0; i < invalid.Length; i++)
+            {
+                cleaned = cleaned.Replace(invalid[i], '-');
+            }
+
+            return cleaned.Length == 0 ? "update" : cleaned;
+        }
+    }
+
     internal static class PathInput
     {
         public static string Normalize(string text)
@@ -997,6 +1367,21 @@ namespace VellwickExtractor
             }
 
             return Environment.ExpandEnvironmentVariables(cleaned);
+        }
+    }
+
+    internal static class LinkLauncher
+    {
+        public static void Open(IWin32Window owner, string url, string name)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(owner, "Could not open " + name + "." + Environment.NewLine + url + Environment.NewLine + Environment.NewLine + ex.Message, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         }
     }
 
@@ -1370,14 +1755,7 @@ namespace VellwickExtractor
         protected override void OnClick(EventArgs e)
         {
             base.OnClick(e);
-            try
-            {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(FindForm(), "Could not open the GitHub link." + Environment.NewLine + url + Environment.NewLine + Environment.NewLine + ex.Message, "Vellwick Extractor", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
+            LinkLauncher.Open(FindForm(), url, "the GitHub link");
         }
 
         protected override void OnPaint(PaintEventArgs e)

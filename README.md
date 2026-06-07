@@ -17,10 +17,13 @@ Click the big download button above, or download the latest Windows executable f
 - Clean dark-mode Windows UI with native Windows folder picker, progress bar, status counters, and detailed log.
 - Editable folder path field with paste support, path autocomplete, and folder drag-and-drop.
 - Vellwick-branded app icon/header mark using the logo asset from `vellwick.com`.
+- Clicking the `Vellwick Extractor` header opens `vellwick.com`.
 - Windows executable icon for Explorer, search, and file picker views.
 - Clickable GitHub link with GitHub mark.
+- Checks the latest GitHub release on startup and can install newer versions automatically.
 - Recursively finds `.zip` files inside the selected folder and its subfolders.
 - Extracts each zip into its own folder beside the original archive.
+- Surfaces redundant single-folder wrappers after extraction when the extracted folder contains only one child folder and no files.
 - Optional checkbox to keep or delete original zip files after successful extraction.
 - Automatic Windows right-click actions:
   - `.zip` files: `Extract with Vellwick`

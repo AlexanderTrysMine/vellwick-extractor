@@ -1,0 +1,71 @@
+name: Build Signed Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v1.0.5"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark release as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-sign-release:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build executable
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Sign executable with Azure Trusted Signing
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
+          files: ${{ github.workspace }}\dist\Vellwick Extractor.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Vellwick
+          description-url: https://github.com/AlexanderTrysMine/vellwick-extractor
+
+      - name: Verify Authenticode signature
+        shell: pwsh
+        run: |
+          $signature = Get-AuthenticodeSignature -LiteralPath ".\dist\Vellwick Extractor.exe"
+          $signature | Format-List
+          if ($signature.Status -ne "Valid") {
+            throw "Executable signature is not valid: $($signature.Status)"
+          }
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $args = @(
+            "release", "create", "${{ inputs.tag }}",
+            ".\dist\Vellwick Extractor.exe",
+            "--title", "Vellwick Extractor ${{ inputs.tag }}",
+            "--notes", "Signed release of Vellwick Extractor by Vellwick."
+          )
+          if ("${{ inputs.prerelease }}" -eq "true") {
+            $args += "--prerelease"
+          }
+          gh @args
