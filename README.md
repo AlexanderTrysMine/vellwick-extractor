@@ -2,15 +2,22 @@
 
 Vellwick Extractor is a simple Windows desktop app for extracting zip files from a selected folder.
 
+<p>
+  <a href="https://github.com/AlexanderTrysMine/vellwick-extractor/releases/latest/download/Vellwick.Extractor.exe">
+    <img alt="Download Vellwick Extractor for Windows" src="https://img.shields.io/badge/Download%20Vellwick%20Extractor-Windows%20.exe-2563eb?style=for-the-badge&logo=windows&logoColor=white" />
+  </a>
+</p>
+
 ## Download
 
-Download the latest Windows executable from the [GitHub releases page](https://github.com/AlexanderTrysMine/vellwick-extractor/releases/latest).
+Click the big download button above, or download the latest Windows executable from the [GitHub releases page](https://github.com/AlexanderTrysMine/vellwick-extractor/releases/latest).
 
 ## Features
 
-- Clean Windows UI with folder picker, progress bar, status counters, and detailed log.
+- Clean dark-mode Windows UI with folder picker, progress bar, status counters, and detailed log.
 - Editable folder path field with paste support, path autocomplete, and folder drag-and-drop.
 - Vellwick-branded app icon/header mark using the logo asset from `vellwick.com`.
+- Windows executable icon for Explorer, search, and file picker views.
 - Clickable GitHub link with GitHub mark.
 - Recursively finds `.zip` files inside the selected folder and its subfolders.
 - Extracts each zip into its own folder beside the original archive.

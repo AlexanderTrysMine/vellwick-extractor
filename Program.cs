@@ -16,11 +16,28 @@ using Microsoft.Win32;
 [assembly: AssemblyProduct("Vellwick Extractor")]
 [assembly: AssemblyCompany("Vellwick")]
 [assembly: AssemblyCopyright("Copyright Vellwick")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyVersion("1.0.3.0")]
+[assembly: AssemblyFileVersion("1.0.3.0")]
 
 namespace VellwickExtractor
 {
+    internal static class Theme
+    {
+        public static readonly Color Window = Color.FromArgb(11, 17, 32);
+        public static readonly Color Header = Color.FromArgb(2, 6, 23);
+        public static readonly Color Surface = Color.FromArgb(15, 23, 42);
+        public static readonly Color SurfaceRaised = Color.FromArgb(30, 41, 59);
+        public static readonly Color SurfaceHover = Color.FromArgb(51, 65, 85);
+        public static readonly Color Border = Color.FromArgb(71, 85, 105);
+        public static readonly Color Primary = Color.FromArgb(37, 99, 235);
+        public static readonly Color PrimaryHover = Color.FromArgb(29, 78, 216);
+        public static readonly Color Accent = Color.FromArgb(56, 189, 248);
+        public static readonly Color Text = Color.FromArgb(226, 232, 240);
+        public static readonly Color MutedText = Color.FromArgb(148, 163, 184);
+        public static readonly Color LogBackground = Color.FromArgb(2, 6, 23);
+        public static readonly Color LogText = Color.FromArgb(203, 213, 225);
+    }
+
     internal static class Program
     {
         [STAThread]
@@ -124,7 +141,7 @@ namespace VellwickExtractor
             MinimumSize = new Size(740, 560);
             Size = new Size(900, 660);
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
-            BackColor = Color.FromArgb(245, 247, 250);
+            BackColor = Theme.Window;
             AutoScaleMode = AutoScaleMode.Dpi;
             Icon = LogoPainter.CreateIcon(32);
 
@@ -156,6 +173,8 @@ namespace VellwickExtractor
             folderTextBox.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             folderTextBox.BorderStyle = BorderStyle.FixedSingle;
             folderTextBox.Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+            folderTextBox.BackColor = Theme.Surface;
+            folderTextBox.ForeColor = Theme.Text;
             folderTextBox.AllowDrop = true;
             folderTextBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
             folderTextBox.AutoCompleteSource = AutoCompleteSource.FileSystemDirectories;
@@ -178,7 +197,7 @@ namespace VellwickExtractor
             keepZipCheckBox.Checked = true;
             keepZipCheckBox.AutoSize = true;
             keepZipCheckBox.Margin = new Padding(0, 8, 16, 8);
-            keepZipCheckBox.ForeColor = Color.FromArgb(37, 49, 65);
+            keepZipCheckBox.ForeColor = Theme.Text;
 
             executeButton = CreatePrimaryButton("Execute");
             executeButton.Margin = new Padding(0, 4, 0, 4);
@@ -196,7 +215,7 @@ namespace VellwickExtractor
             statusLabel = new Label();
             statusLabel.AutoEllipsis = true;
             statusLabel.Dock = DockStyle.Fill;
-            statusLabel.ForeColor = Color.FromArgb(71, 85, 105);
+            statusLabel.ForeColor = Theme.MutedText;
             statusLabel.Margin = new Padding(0, 0, 0, 8);
             statusLabel.Text = "Ready.";
 
@@ -216,8 +235,8 @@ namespace VellwickExtractor
             logTextBox.ReadOnly = true;
             logTextBox.ScrollBars = ScrollBars.Vertical;
             logTextBox.BorderStyle = BorderStyle.FixedSingle;
-            logTextBox.BackColor = Color.White;
-            logTextBox.ForeColor = Color.FromArgb(30, 41, 59);
+            logTextBox.BackColor = Theme.LogBackground;
+            logTextBox.ForeColor = Theme.LogText;
             logTextBox.Font = new Font("Consolas", 9F, FontStyle.Regular, GraphicsUnit.Point);
             logTextBox.Margin = new Padding(0);
             logPanel.Controls.Add(logTextBox, 0, 3);
@@ -237,12 +256,12 @@ namespace VellwickExtractor
             header.Dock = DockStyle.Top;
             header.Height = 88;
             header.Margin = new Padding(0, 0, 0, 16);
-            header.BackColor = Color.FromArgb(31, 41, 55);
+            header.BackColor = Theme.Header;
 
             var accent = new Panel();
             accent.Dock = DockStyle.Left;
             accent.Width = 8;
-            accent.BackColor = Color.FromArgb(37, 99, 235);
+            accent.BackColor = Theme.Accent;
             header.Controls.Add(accent);
 
             var layout = new TableLayoutPanel();
@@ -266,7 +285,7 @@ namespace VellwickExtractor
             var title = new Label();
             title.Text = "Vellwick Extractor";
             title.Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold, GraphicsUnit.Point);
-            title.ForeColor = Color.White;
+            title.ForeColor = Theme.Text;
             title.AutoSize = false;
             title.Dock = DockStyle.Fill;
             title.TextAlign = ContentAlignment.MiddleLeft;
@@ -298,7 +317,7 @@ namespace VellwickExtractor
             label.Text = "Folder";
             label.Dock = DockStyle.Fill;
             label.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point);
-            label.ForeColor = Color.FromArgb(30, 41, 59);
+            label.ForeColor = Theme.Text;
             label.Margin = new Padding(0, 0, 0, 2);
             panel.Controls.Add(label, 0, 0);
             panel.SetColumnSpan(label, 2);
@@ -360,14 +379,14 @@ namespace VellwickExtractor
             var nameLabel = new Label();
             nameLabel.Text = name;
             nameLabel.Dock = DockStyle.Fill;
-            nameLabel.ForeColor = Color.FromArgb(100, 116, 139);
+            nameLabel.ForeColor = Theme.MutedText;
             nameLabel.Margin = new Padding(0, 0, 12, 0);
             nameLabel.AutoEllipsis = true;
             panel.Controls.Add(nameLabel, column, 0);
 
             valueLabel.Text = "0";
             valueLabel.Dock = DockStyle.Fill;
-            valueLabel.ForeColor = Color.FromArgb(15, 23, 42);
+            valueLabel.ForeColor = Theme.Text;
             valueLabel.Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold, GraphicsUnit.Point);
             valueLabel.Margin = new Padding(0, 0, 12, 8);
             valueLabel.AutoEllipsis = true;
@@ -381,10 +400,10 @@ namespace VellwickExtractor
             button.AutoSize = true;
             button.MinimumSize = new Size(112, 34);
             button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderColor = Color.FromArgb(148, 163, 184);
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(226, 232, 240);
-            button.BackColor = Color.White;
-            button.ForeColor = Color.FromArgb(30, 41, 59);
+            button.FlatAppearance.BorderColor = Theme.Border;
+            button.FlatAppearance.MouseOverBackColor = Theme.SurfaceHover;
+            button.BackColor = Theme.SurfaceRaised;
+            button.ForeColor = Theme.Text;
             button.UseVisualStyleBackColor = false;
             return button;
         }
@@ -393,9 +412,9 @@ namespace VellwickExtractor
         {
             var button = CreateButton(text);
             button.MinimumSize = new Size(132, 38);
-            button.FlatAppearance.BorderColor = Color.FromArgb(37, 99, 235);
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(29, 78, 216);
-            button.BackColor = Color.FromArgb(37, 99, 235);
+            button.FlatAppearance.BorderColor = Theme.Primary;
+            button.FlatAppearance.MouseOverBackColor = Theme.PrimaryHover;
+            button.BackColor = Theme.Primary;
             button.ForeColor = Color.White;
             button.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point);
             return button;
@@ -404,6 +423,8 @@ namespace VellwickExtractor
         private ContextMenuStrip BuildFolderContextMenu()
         {
             var menu = new ContextMenuStrip();
+            menu.BackColor = Theme.SurfaceRaised;
+            menu.ForeColor = Theme.Text;
             var paste = new ToolStripMenuItem("Paste", null, FolderPaste_Click);
             var clear = new ToolStripMenuItem("Clear", null, FolderClear_Click);
             menu.Items.Add(paste);
