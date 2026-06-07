@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $source = Join-Path $projectRoot "Program.cs"
+$vellwickLogo = Join-Path $projectRoot "assets\vellwick-mark-dark.png"
+$githubLogo = Join-Path $projectRoot "assets\github-mark.png"
 $dist = Join-Path $projectRoot "dist"
 $output = Join-Path $dist "Vellwick Extractor.exe"
 $compiler = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
@@ -23,6 +25,8 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
     /reference:System.Windows.Forms.dll `
     /reference:System.IO.Compression.dll `
     /reference:System.IO.Compression.FileSystem.dll `
+    /resource:$vellwickLogo,VellwickExtractor.Assets.VellwickMarkDark.png `
+    /resource:$githubLogo,VellwickExtractor.Assets.GitHubMark.png `
     $source
 
 Write-Host "Built $output"

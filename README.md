@@ -10,11 +10,14 @@ Download the latest Windows executable from the [GitHub releases page](https://g
 
 - Clean Windows UI with folder picker, progress bar, status counters, and detailed log.
 - Editable folder path field with paste support, path autocomplete, and folder drag-and-drop.
-- Vellwick-branded app icon/header mark and a clickable GitHub link.
+- Vellwick-branded app icon/header mark using the logo asset from `vellwick.com`.
+- Clickable GitHub link with GitHub mark.
 - Recursively finds `.zip` files inside the selected folder and its subfolders.
 - Extracts each zip into its own folder beside the original archive.
 - Optional checkbox to keep or delete original zip files after successful extraction.
-- Optional Windows right-click setup for `.zip` files: `Extract with Vellwick`.
+- Automatic Windows right-click actions:
+  - `.zip` files: `Extract with Vellwick`
+  - folders and folder backgrounds: `Extract all with Vellwick`
 - Collision-safe output names so existing files and folders are not overwritten.
 - Basic zip-slip protection for unsafe archive paths.
 - Single `.exe` build using the built-in .NET Framework compiler on Windows.
@@ -44,6 +47,6 @@ Only zip files that extract successfully are deleted when the keep option is unc
 
 ## Right-Click Extract
 
-Open the app and click `Right-click setup` to add a per-user Windows Explorer action for zip files.
+Open the app once to refresh the per-user Windows Explorer actions automatically.
 
-After setup, right-click a `.zip` file and choose `Extract with Vellwick`. The zip is extracted beside the original file and the original zip is kept.
+Right-click a `.zip` file and choose `Extract with Vellwick`, or right-click a folder and choose `Extract all with Vellwick`. Right-click extraction keeps the original zip files.
