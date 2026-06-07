@@ -14,7 +14,7 @@ Click the big download button above, or download the latest Windows executable f
 
 ## Features
 
-- Clean dark-mode Windows UI with folder picker, progress bar, status counters, and detailed log.
+- Clean dark-mode Windows UI with native Windows folder picker, progress bar, status counters, and detailed log.
 - Editable folder path field with paste support, path autocomplete, and folder drag-and-drop.
 - Vellwick-branded app icon/header mark using the logo asset from `vellwick.com`.
 - Windows executable icon for Explorer, search, and file picker views.

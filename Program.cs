@@ -16,8 +16,8 @@ using Microsoft.Win32;
 [assembly: AssemblyProduct("Vellwick Extractor")]
 [assembly: AssemblyCompany("Vellwick")]
 [assembly: AssemblyCopyright("Copyright Vellwick")]
-[assembly: AssemblyVersion("1.0.3.0")]
-[assembly: AssemblyFileVersion("1.0.3.0")]
+[assembly: AssemblyVersion("1.0.4.0")]
+[assembly: AssemblyFileVersion("1.0.4.0")]
 
 namespace VellwickExtractor
 {
@@ -122,7 +122,7 @@ namespace VellwickExtractor
         private readonly Button browseButton;
         private readonly Button executeButton;
         private readonly CheckBox keepZipCheckBox;
-        private readonly ProgressBar progressBar;
+        private readonly DarkProgressBar progressBar;
         private readonly Label statusLabel;
         private readonly TextBox logTextBox;
         private readonly Label foundValueLabel;
@@ -206,7 +206,7 @@ namespace VellwickExtractor
             controlsPanel.Controls.Add(keepZipCheckBox, 0, 0);
             controlsPanel.Controls.Add(executeButton, 1, 0);
 
-            progressBar = new ProgressBar();
+            progressBar = new DarkProgressBar();
             progressBar.Dock = DockStyle.Fill;
             progressBar.Height = 14;
             progressBar.Margin = new Padding(0, 12, 0, 4);
@@ -249,6 +249,29 @@ namespace VellwickExtractor
             worker.ProgressChanged += Worker_ProgressChanged;
             worker.RunWorkerCompleted += Worker_RunWorkerCompleted;
         }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            EnableDarkTitleBar();
+        }
+
+        private void EnableDarkTitleBar()
+        {
+            if (Environment.OSVersion.Version.Major < 10)
+            {
+                return;
+            }
+
+            var enabled = 1;
+            if (DwmSetWindowAttribute(Handle, 20, ref enabled, Marshal.SizeOf(typeof(int))) != 0)
+            {
+                DwmSetWindowAttribute(Handle, 19, ref enabled, Marshal.SizeOf(typeof(int)));
+            }
+        }
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int attributeValue, int attributeSize);
 
         private Control BuildHeader()
         {
@@ -305,6 +328,8 @@ namespace VellwickExtractor
         {
             var panel = new TableLayoutPanel();
             panel.Dock = DockStyle.Top;
+            panel.AutoSize = true;
+            panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             panel.ColumnCount = 2;
             panel.RowCount = 2;
             panel.Margin = new Padding(0, 0, 0, 10);
@@ -329,6 +354,8 @@ namespace VellwickExtractor
         {
             var panel = new TableLayoutPanel();
             panel.Dock = DockStyle.Top;
+            panel.AutoSize = true;
+            panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             panel.ColumnCount = 2;
             panel.RowCount = 1;
             panel.Margin = new Padding(0, 0, 0, 14);
@@ -356,6 +383,8 @@ namespace VellwickExtractor
         {
             var panel = new TableLayoutPanel();
             panel.Dock = DockStyle.Top;
+            panel.AutoSize = true;
+            panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             panel.ColumnCount = 4;
             panel.RowCount = 2;
             panel.Margin = new Padding(0, 0, 0, 2);
@@ -516,20 +545,12 @@ namespace VellwickExtractor
 
         private void BrowseButton_Click(object sender, EventArgs e)
         {
-            using (var dialog = new FolderBrowserDialog())
+            var currentPath = PathInput.Normalize(folderTextBox.Text);
+            var selectedPath = NativeFolderPicker.PickFolder(this, currentPath);
+            if (!string.IsNullOrWhiteSpace(selectedPath))
             {
-                dialog.Description = "Choose the folder that contains zip files.";
-                dialog.ShowNewFolderButton = false;
-                if (Directory.Exists(PathInput.Normalize(folderTextBox.Text)))
-                {
-                    dialog.SelectedPath = PathInput.Normalize(folderTextBox.Text);
-                }
-
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
-                    folderTextBox.Text = dialog.SelectedPath;
-                    statusLabel.Text = "Ready.";
-                }
+                folderTextBox.Text = selectedPath;
+                statusLabel.Text = "Ready.";
             }
         }
 
@@ -1049,18 +1070,270 @@ namespace VellwickExtractor
         }
     }
 
+    internal static class NativeFolderPicker
+    {
+        private const uint FOS_NOCHANGEDIR = 0x00000008;
+        private const uint FOS_PICKFOLDERS = 0x00000020;
+        private const uint FOS_FORCEFILESYSTEM = 0x00000040;
+        private const uint FOS_PATHMUSTEXIST = 0x00000800;
+        private const uint SIGDN_FILESYSPATH = 0x80058000;
+        private const int ERROR_CANCELLED = unchecked((int)0x800704C7);
+
+        public static string PickFolder(IWin32Window owner, string initialPath)
+        {
+            try
+            {
+                var selected = PickFolderWithNativeDialog(owner, initialPath);
+                if (!string.IsNullOrWhiteSpace(selected))
+                {
+                    return selected;
+                }
+
+                return null;
+            }
+            catch
+            {
+                return PickFolderWithFallbackDialog(owner, initialPath);
+            }
+        }
+
+        private static string PickFolderWithNativeDialog(IWin32Window owner, string initialPath)
+        {
+            IFileOpenDialog dialog = null;
+            IShellItem initialFolder = null;
+            IShellItem result = null;
+            try
+            {
+                dialog = (IFileOpenDialog)new FileOpenDialog();
+                uint options;
+                dialog.GetOptions(out options);
+                dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR);
+                dialog.SetTitle("Choose folder");
+                dialog.SetOkButtonLabel("Select Folder");
+
+                if (Directory.Exists(initialPath))
+                {
+                    var shellItemGuid = typeof(IShellItem).GUID;
+                    SHCreateItemFromParsingName(initialPath, IntPtr.Zero, ref shellItemGuid, out initialFolder);
+                    dialog.SetFolder(initialFolder);
+                }
+
+                var hr = dialog.Show(owner == null ? IntPtr.Zero : owner.Handle);
+                if (hr == ERROR_CANCELLED)
+                {
+                    return null;
+                }
+
+                if (hr != 0)
+                {
+                    Marshal.ThrowExceptionForHR(hr);
+                }
+
+                dialog.GetResult(out result);
+                IntPtr pathPointer;
+                result.GetDisplayName(SIGDN_FILESYSPATH, out pathPointer);
+                try
+                {
+                    return Marshal.PtrToStringUni(pathPointer);
+                }
+                finally
+                {
+                    Marshal.FreeCoTaskMem(pathPointer);
+                }
+            }
+            finally
+            {
+                if (result != null) Marshal.FinalReleaseComObject(result);
+                if (initialFolder != null) Marshal.FinalReleaseComObject(initialFolder);
+                if (dialog != null) Marshal.FinalReleaseComObject(dialog);
+            }
+        }
+
+        private static string PickFolderWithFallbackDialog(IWin32Window owner, string initialPath)
+        {
+            using (var dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = "Choose the folder that contains zip files.";
+                dialog.ShowNewFolderButton = false;
+                if (Directory.Exists(initialPath))
+                {
+                    dialog.SelectedPath = initialPath;
+                }
+
+                return dialog.ShowDialog(owner) == DialogResult.OK ? dialog.SelectedPath : null;
+            }
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+        private static extern void SHCreateItemFromParsingName(
+            [MarshalAs(UnmanagedType.LPWStr)] string pszPath,
+            IntPtr pbc,
+            ref Guid riid,
+            [MarshalAs(UnmanagedType.Interface)] out IShellItem ppv
+        );
+
+        [ComImport]
+        [Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+        private class FileOpenDialog
+        {
+        }
+
+        [ComImport]
+        [Guid("D57C7288-D4AD-4768-BE02-9D969532D960")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IFileOpenDialog
+        {
+            [PreserveSig]
+            int Show(IntPtr parent);
+            void SetFileTypes(uint cFileTypes, IntPtr rgFilterSpec);
+            void SetFileTypeIndex(uint iFileType);
+            void GetFileTypeIndex(out uint piFileType);
+            void Advise(IntPtr pfde, out uint pdwCookie);
+            void Unadvise(uint dwCookie);
+            void SetOptions(uint fos);
+            void GetOptions(out uint pfos);
+            void SetDefaultFolder(IShellItem psi);
+            void SetFolder(IShellItem psi);
+            void GetFolder(out IShellItem ppsi);
+            void GetCurrentSelection(out IShellItem ppsi);
+            void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+            void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);
+            void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);
+            void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);
+            void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);
+            void GetResult(out IShellItem ppsi);
+            void AddPlace(IShellItem psi, int fdap);
+            void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string pszDefaultExtension);
+            void Close(int hr);
+            void SetClientGuid(ref Guid guid);
+            void ClearClientData();
+            void SetFilter(IntPtr pFilter);
+            void GetResults(out IntPtr ppenum);
+            void GetSelectedItems(out IntPtr ppsai);
+        }
+
+        [ComImport]
+        [Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IShellItem
+        {
+            void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+            void GetParent(out IShellItem ppsi);
+            void GetDisplayName(uint sigdnName, out IntPtr ppszName);
+            void GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+            void Compare(IShellItem psi, uint hint, out int piOrder);
+        }
+    }
+
     internal sealed class VellwickLogoControl : Control
     {
         public VellwickLogoControl()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            BackColor = Theme.Header;
             MinimumSize = new Size(42, 42);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            e.Graphics.Clear(Theme.Header);
+            LogoPainter.Paint(e.Graphics, Rectangle.Inflate(ClientRectangle, -1, -1), false);
+        }
+    }
+
+    internal sealed class DarkProgressBar : Control
+    {
+        private readonly Timer marqueeTimer;
+        private int value;
+        private int marqueeOffset;
+        private ProgressBarStyle style = ProgressBarStyle.Continuous;
+
+        public DarkProgressBar()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            BackColor = Theme.Window;
+            MinimumSize = new Size(80, 12);
+
+            marqueeTimer = new Timer();
+            marqueeTimer.Interval = 30;
+            marqueeTimer.Tick += delegate
+            {
+                marqueeOffset = (marqueeOffset + 7) % Math.Max(1, Width + 80);
+                Invalidate();
+            };
+        }
+
+        public int Value
+        {
+            get { return value; }
+            set
+            {
+                this.value = Math.Max(0, Math.Min(100, value));
+                Invalidate();
+            }
+        }
+
+        public ProgressBarStyle Style
+        {
+            get { return style; }
+            set
+            {
+                style = value;
+                marqueeOffset = 0;
+                if (style == ProgressBarStyle.Marquee)
+                {
+                    marqueeTimer.Start();
+                }
+                else
+                {
+                    marqueeTimer.Stop();
+                }
+
+                Invalidate();
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                marqueeTimer.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
             base.OnPaint(e);
-            LogoPainter.Paint(e.Graphics, ClientRectangle, false);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var track = new Rectangle(0, Math.Max(0, (Height - 10) / 2), Width - 1, Math.Min(10, Height - 1));
+            using (var trackBrush = new SolidBrush(Theme.SurfaceRaised))
+            using (var borderPen = new Pen(Theme.Border))
+            {
+                e.Graphics.FillRectangle(trackBrush, track);
+                e.Graphics.DrawRectangle(borderPen, track);
+            }
+
+            Rectangle fill;
+            if (style == ProgressBarStyle.Marquee)
+            {
+                var barWidth = Math.Max(42, Width / 4);
+                fill = new Rectangle(marqueeOffset - barWidth, track.Top + 1, barWidth, Math.Max(1, track.Height - 1));
+            }
+            else
+            {
+                fill = new Rectangle(track.Left + 1, track.Top + 1, Math.Max(0, (track.Width - 1) * value / 100), Math.Max(1, track.Height - 1));
+            }
+
+            if (fill.Width > 0)
+            {
+                using (var fillBrush = new SolidBrush(Theme.Primary))
+                {
+                    e.Graphics.FillRectangle(fillBrush, fill);
+                }
+            }
         }
     }
 
@@ -1076,6 +1349,7 @@ namespace VellwickExtractor
             this.accountName = accountName;
             Cursor = Cursors.Hand;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            BackColor = Theme.Header;
             MinimumSize = new Size(170, 44);
         }
 
@@ -1108,7 +1382,7 @@ namespace VellwickExtractor
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
+            e.Graphics.Clear(Theme.Header);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
@@ -1134,10 +1408,10 @@ namespace VellwickExtractor
                 }
 
                 var linkRect = new Rectangle(logoRect.Right + 7, 1, Width - logoRect.Right - 7, 24);
-                TextRenderer.DrawText(e.Graphics, linkText, linkFont, linkRect, Color.FromArgb(191, 219, 254), TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(e.Graphics, linkText, linkFont, linkRect, Theme.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
 
                 var accountRect = new Rectangle(0, 28, Width, 18);
-                TextRenderer.DrawText(e.Graphics, accountName, accountFont, accountRect, Color.FromArgb(203, 213, 225), TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(e.Graphics, accountName, accountFont, accountRect, Theme.MutedText, TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
             }
         }
     }
