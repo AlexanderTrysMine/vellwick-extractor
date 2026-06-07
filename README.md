@@ -12,6 +12,8 @@ Vellwick Extractor is a simple Windows desktop app for extracting zip files from
 
 Click the big download button above, or download the latest Windows executable from the [GitHub releases page](https://github.com/AlexanderTrysMine/vellwick-extractor/releases/latest).
 
+Microsoft Store packaging is being prepared for a cleaner non-technical install path. Store installs use Microsoft signing; direct GitHub `.exe` downloads are a separate SmartScreen reputation path.
+
 ## Features
 
 - Clean dark-mode Windows UI with native Windows folder picker, progress bar, status counters, and detailed log.
@@ -45,6 +47,22 @@ The executable is written to:
 ```text
 .\dist\Vellwick Extractor.exe
 ```
+
+## Build MSIX
+
+To create a Microsoft Store MSIX package layout, install MSIX Toolkit or Windows SDK and run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-msix.ps1
+```
+
+The MSIX is written to:
+
+```text
+.\dist\VellwickExtractor.msix
+```
+
+Before final Store submission, rebuild with the exact Package/Identity values from Partner Center. See [MSIX.md](MSIX.md).
 
 ## Use
 
