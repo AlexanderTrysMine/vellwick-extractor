@@ -2,15 +2,28 @@
 
 ## App Identity
 
-Reserve the app name in Partner Center first. Use Partner Center's exact Package/Identity values when rebuilding the MSIX:
+Partner Center values currently shown for this product:
+
+```text
+Package/Identity/Name: Vellwick.VellwickExtrator
+Package/Identity/Publisher: CN=46379AFC-2698-4D4D-8848-D53E72919135
+Package/Properties/PublisherDisplayName: Vellwick
+Store ID: 9N16GHFB91HT
+```
+
+Note: Partner Center currently spells the reserved product/package identity as `Extrator`, not `Extractor`. The MSIX must match Partner Center's exact identity to upload, but the public product name should be corrected before release if Partner Center allows it.
+
+Use Partner Center's exact Package/Identity values when rebuilding the MSIX:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-msix.ps1 `
-  -IdentityName "PARTNER_CENTER_PACKAGE_IDENTITY_NAME" `
-  -Publisher "PARTNER_CENTER_PACKAGE_PUBLISHER"
+  -IdentityName "Vellwick.VellwickExtrator" `
+  -Publisher "CN=46379AFC-2698-4D4D-8848-D53E72919135" `
+  -PublisherDisplayName "Vellwick" `
+  -PackageDisplayName "Vellwick Extractor"
 ```
 
-The current local package uses placeholder identity values and is suitable for packaging validation, not final Store upload.
+The final local package must be rebuilt with those values before Store upload.
 
 ## Suggested Listing
 
